@@ -62,11 +62,25 @@ export enum BookingStatus {
   NO_SHOW = "NO_SHOW",
 }
 
+// FE conflates two BE enums into one type:
+//   - `booking.paymentStatus` (BE PaymentStatus): UNPAID / DEPOSITED / FULLY_PAID / REFUNDED
+//   - `payment.status` (BE TxStatus):              PENDING / SUCCESS / FAILED
+// Both shapes coexist here. Aliases keep legacy `.PAID` / `.PENDING` comparisons
+// working against the *Payment row* (TxStatus). Booking-level paymentStatus
+// must be compared against UNPAID / DEPOSITED / FULLY_PAID directly.
 export enum PaymentStatus {
-  PENDING = "PENDING",
-  PAID = "PAID",
+  // BE booking.paymentStatus values
+  UNPAID = "UNPAID",
+  DEPOSITED = "DEPOSITED",
+  FULLY_PAID = "FULLY_PAID",
   REFUNDED = "REFUNDED",
+  // BE payment.status (TxStatus) values
+  SUCCESS = "SUCCESS",
   FAILED = "FAILED",
+  // Legacy aliases — `PAID` is the same string as TxStatus.SUCCESS so that
+  // `payment.status === PaymentStatus.PAID` keeps matching real payment rows.
+  PAID = "SUCCESS",
+  PENDING = "PENDING",
 }
 
 export enum PaymentMethod {

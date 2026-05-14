@@ -55,11 +55,16 @@ const TABS: { value: StatusTab; label: string }[] = [
   { value: BookingStatus.CANCELLED, label: "Đã hủy" },
 ];
 
-const PAYMENT_LABEL: Record<PaymentStatus, string> = {
-  [PaymentStatus.PENDING]: "Chưa thanh toán",
-  [PaymentStatus.PAID]: "Đã thanh toán",
-  [PaymentStatus.REFUNDED]: "Đã hoàn tiền",
-  [PaymentStatus.FAILED]: "Thất bại",
+// Keyed by raw string so BE booking.paymentStatus (UNPAID/DEPOSITED/FULLY_PAID)
+// and Payment.status (PENDING/SUCCESS/FAILED) both resolve to a label.
+const PAYMENT_LABEL: Record<string, string> = {
+  UNPAID: "Chưa thanh toán",
+  DEPOSITED: "Đã đặt cọc",
+  FULLY_PAID: "Đã thanh toán",
+  REFUNDED: "Đã hoàn tiền",
+  PENDING: "Đang xử lý",
+  SUCCESS: "Thành công",
+  FAILED: "Thất bại",
 };
 
 export default function StaffBookingsPage() {

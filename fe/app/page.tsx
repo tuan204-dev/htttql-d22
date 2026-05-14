@@ -15,9 +15,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FieldCard, type FieldCardField } from "@/components/booking/FieldCard";
 import { fieldsApi } from "@/lib/api/fields.api";
+import { useAuthStore } from "@/lib/store/auth.store";
 import type { PaginatedResponse } from "@/types";
 
 export default function Home() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
   const featuredQuery = useQuery({
     queryKey: ["featured-fields"],
     queryFn: async () => {
@@ -66,9 +69,11 @@ export default function Home() {
                   Đặt sân ngay <ArrowRight className="ml-1 size-4" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
-                <Link href="/register">Tạo tài khoản</Link>
-              </Button>
+              {!isAuthenticated && (
+                <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
+                  <Link href="/register">Tạo tài khoản</Link>
+                </Button>
+              )}
             </div>
           </div>
         </section>

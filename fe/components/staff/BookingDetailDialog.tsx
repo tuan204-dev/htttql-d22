@@ -13,10 +13,7 @@ import {
   formatDateTime,
   formatTime,
 } from "@/lib/utils";
-import {
-  PaymentStatus,
-  type Booking,
-} from "@/types";
+import type { Booking } from "@/types";
 
 export interface BookingDetailDialogProps {
   booking: Booking | null;
@@ -24,11 +21,16 @@ export interface BookingDetailDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const PAYMENT_LABEL: Record<PaymentStatus, string> = {
-  [PaymentStatus.PENDING]: "Chưa thanh toán",
-  [PaymentStatus.PAID]: "Đã thanh toán",
-  [PaymentStatus.REFUNDED]: "Đã hoàn tiền",
-  [PaymentStatus.FAILED]: "Thanh toán thất bại",
+// Keyed by raw string — covers both BE booking.paymentStatus
+// (UNPAID/DEPOSITED/FULLY_PAID/REFUNDED) and Payment.status (PENDING/SUCCESS/FAILED).
+const PAYMENT_LABEL: Record<string, string> = {
+  UNPAID: "Chưa thanh toán",
+  DEPOSITED: "Đã đặt cọc",
+  FULLY_PAID: "Đã thanh toán",
+  REFUNDED: "Đã hoàn tiền",
+  PENDING: "Đang xử lý",
+  SUCCESS: "Thành công",
+  FAILED: "Thanh toán thất bại",
 };
 
 export function BookingDetailDialog({

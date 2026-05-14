@@ -54,7 +54,7 @@ import { bookingsApi } from "@/lib/api/bookings.api";
 import { paymentsApi } from "@/lib/api/payments.api";
 import { reviewsApi } from "@/lib/api/reviews.api";
 import { reviewSchema, type ReviewFormValues } from "@/lib/validators/customer.schema";
-import { cn, formatCurrency, formatDate, formatDateTime, formatTime, FIELD_IMAGE_URL } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatDateTime, FIELD_IMAGE_URL } from "@/lib/utils";
 import {
   BookingStatus,
   PaymentMethod,
@@ -85,9 +85,12 @@ const QR_AUTO_PAY_SECONDS = 5;
 
 function paidTotal(payments: Payment[] | undefined): number {
   if (!payments?.length) return 0;
+  // BE Payment row uses TxStatus = PENDING / SUCCESS / FAILED.
+  // PaymentStatus.PAID is aliased to "SUCCESS" so the comparison still works,
+  // but we also accept the bare "SUCCESS" string in case alias drifts.
   return payments
-    .filter((p) => p.status === PaymentStatus.PAID)
-    .reduce((acc, p) => acc + (p.amount ?? 0), 0);
+    .filter((p) => p.status === PaymentStatus.PAID || (p.status as unknown as string) === "SUCCESS")
+    .reduce((acc, p) => acc + Number(p.amount ?? 0), 0);
 }
 
 function parseTimeToMinutes(t: string | undefined | null): number | null {
@@ -226,14 +229,16 @@ export default function BookingDetailPage({
   const hours = booking ? totalHours(booking) : 0;
   const field = booking ? fieldFromSlot(booking) : undefined;
 
-  const slotsTotal = useMemo(
-    () =>
-      (booking?.slots ?? []).reduce(
-        (acc, s) => acc + (s.subtotal ?? 0),
-        0,
-      ),
-    [booking],
-  );
+  // BE's BookingSlot has no `subtotal` column — fall back to the booking-level
+  // fieldPrice so the "Tiền sân" line is never blank.
+  const slotsTotal = useMemo(() => {
+    const fromSlots = (booking?.slots ?? []).reduce(
+      (acc, s) => acc + (s.subtotal ?? 0),
+      0,
+    );
+    if (fromSlots > 0) return fromSlots;
+    return Number(booking?.fieldPrice ?? 0) || 0;
+  }, [booking]);
   const servicesTotal = useMemo(
     () =>
       (booking?.services ?? []).reduce(
@@ -296,11 +301,13 @@ export default function BookingDetailPage({
           type: payPortion === "DEPOSIT" ? "DEPOSIT" : "FULL_PAYMENT",
           method: "BANK_TRANSFER",
         });
-        setPayStep("done");
         toast.success("Thanh toán thành công!");
+        // Invalidate so the bookings list shows the new status when we land there.
         await queryClient.invalidateQueries({ queryKey: ["booking", id] });
         await queryClient.invalidateQueries({ queryKey: ["booking-payments", id] });
         await queryClient.invalidateQueries({ queryKey: ["my-bookings"] });
+        setPayOpen(false);
+        router.push("/bookings");
       } catch (err) {
         const ax = err as AxiosError<{ message?: string }>;
         toast.error(
@@ -316,7 +323,7 @@ export default function BookingDetailPage({
       window.clearInterval(tickHandle);
       window.clearTimeout(payHandle);
     };
-  }, [payStep, booking, payAmount, payPortion, id, queryClient]);
+  }, [payStep, booking, payAmount, payPortion, id, queryClient, router]);
 
   // Construct a real VietQR image URL (no API key needed). The QR encodes the
   // bank account + amount + memo, so a real banking app could scan it; but the
@@ -475,26 +482,51 @@ export default function BookingDetailPage({
             <CardContent>
               {booking.slots?.length ? (
                 <ul className="space-y-3">
-                  {booking.slots.map((s) => (
-                    <li
-                      key={s.id}
-                      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border border-border bg-muted/20 p-3 text-sm"
-                    >
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span className="inline-flex items-center gap-1.5">
-                          <CalendarDays className="size-4 text-muted-foreground" />
-                          {formatDate(s.startTime)}
-                        </span>
-                        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                          <Clock className="size-4" />
-                          {formatTime(s.startTime)} - {formatTime(s.endTime)}
-                        </span>
-                      </div>
-                      <span className="font-medium">
-                        {formatCurrency(s.subtotal ?? 0)}
-                      </span>
-                    </li>
-                  ))}
+                  {(() => {
+                    // BE shape: { slotDate, slotStart, slotEnd } as strings.
+                    // Legacy/fallback: { startTime, endTime }.
+                    // Distribute booking.fieldPrice evenly across slots since
+                    // BE doesn't store a per-slot subtotal.
+                    const slotCount = booking.slots!.length;
+                    const evenPrice =
+                      slotCount > 0
+                        ? Math.round(
+                            (Number(booking.fieldPrice ?? 0) || 0) / slotCount,
+                          )
+                        : 0;
+                    return booking.slots!.map((s) => {
+                      const slot = s as typeof s & {
+                        slotDate?: string;
+                        slotStart?: string;
+                        slotEnd?: string;
+                      };
+                      const dateStr = slot.slotDate ?? slot.startTime ?? "";
+                      // Time strings come as "HH:mm:ss" — take first 5 chars.
+                      const startStr = (slot.slotStart ?? slot.startTime ?? "").slice(0, 5);
+                      const endStr = (slot.slotEnd ?? slot.endTime ?? "").slice(0, 5);
+                      const slotPrice = slot.subtotal ?? evenPrice;
+                      return (
+                        <li
+                          key={s.id}
+                          className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border border-border bg-muted/20 p-3 text-sm"
+                        >
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span className="inline-flex items-center gap-1.5">
+                              <CalendarDays className="size-4 text-muted-foreground" />
+                              {dateStr ? formatDate(dateStr) : "—"}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                              <Clock className="size-4" />
+                              {startStr} - {endStr}
+                            </span>
+                          </div>
+                          <span className="font-medium">
+                            {formatCurrency(slotPrice)}
+                          </span>
+                        </li>
+                      );
+                    });
+                  })()}
                 </ul>
               ) : (
                 <p className="text-sm text-muted-foreground">

@@ -15,6 +15,12 @@ export interface AvailabilityGridProps {
   onChange: (slots: string[]) => void;
   /** Default 8 = 4 hours. */
   maxSlots?: number;
+  /**
+   * The date these slots belong to ("YYYY-MM-DD" or Date). When provided, any
+   * slot whose start time has already passed will be disabled — useful when
+   * the customer is viewing today's availability.
+   */
+  date?: Date | string;
 }
 
 /**
@@ -37,14 +43,54 @@ function isContiguous(starts: string[]): boolean {
   return true;
 }
 
+/**
+ * Resolve a `date` prop (Date | "YYYY-MM-DD" | undefined) against today.
+ * Returns:
+ *   - "past"   → entire day is in the past, every slot is gone
+ *   - "today"  → only slots before `nowMinutes` are gone
+ *   - "future" → no time-based gating, only the BE `available` flag matters
+ */
+function classifyDate(input: Date | string | undefined): {
+  kind: "past" | "today" | "future" | "none";
+  nowMinutes: number;
+} {
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  if (!input) return { kind: "none", nowMinutes };
+
+  const d =
+    typeof input === "string"
+      ? // Treat plain "YYYY-MM-DD" as local-midnight rather than UTC.
+        /^\d{4}-\d{2}-\d{2}$/.test(input)
+        ? new Date(`${input}T00:00:00`)
+        : new Date(input)
+      : input;
+  if (Number.isNaN(d.getTime())) return { kind: "none", nowMinutes };
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (day.getTime() < today.getTime()) return { kind: "past", nowMinutes };
+  if (day.getTime() > today.getTime()) return { kind: "future", nowMinutes };
+  return { kind: "today", nowMinutes };
+}
+
 export function AvailabilityGrid({
   slots,
   selectedSlots,
   onChange,
   maxSlots = 8,
+  date,
 }: AvailabilityGridProps) {
+  const { kind: dayKind, nowMinutes } = classifyDate(date);
+
+  const isPast = (slotStart: string): boolean => {
+    if (dayKind === "past") return true;
+    if (dayKind === "today") return toMinutes(slotStart) <= nowMinutes;
+    return false;
+  };
+
   const handleClick = (slot: AvailabilityGridSlot) => {
-    if (!slot.available) return;
+    if (!slot.available || isPast(slot.slotStart)) return;
 
     const isSelected = selectedSlots.includes(slot.slotStart);
 
@@ -87,22 +133,34 @@ export function AvailabilityGrid({
       <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
         {slots.map((slot) => {
           const selected = selectedSlots.includes(slot.slotStart);
+          const past = isPast(slot.slotStart);
+          const unavailable = !slot.available || past;
+          const reason = past ? "past" : !slot.available ? "booked" : null;
           return (
             <button
               key={slot.slotStart}
               type="button"
               onClick={() => handleClick(slot)}
-              disabled={!slot.available}
+              disabled={unavailable}
               aria-pressed={selected}
+              title={
+                past
+                  ? "Khung giờ đã trôi qua"
+                  : !slot.available
+                    ? "Khung giờ đã được đặt"
+                    : undefined
+              }
               className={cn(
                 "flex min-h-11 items-center justify-center rounded-md border px-1 py-2 text-xs font-medium transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                slot.available && !selected &&
+                !unavailable && !selected &&
                   "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300",
                 selected &&
                   "border-amber-300 bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100",
-                !slot.available &&
+                reason === "booked" &&
                   "cursor-not-allowed border-muted bg-muted text-muted-foreground line-through opacity-70",
+                reason === "past" &&
+                  "cursor-not-allowed border-dashed border-muted bg-muted/40 text-muted-foreground/70 line-through",
               )}
             >
               {slot.slotStart}
@@ -121,6 +179,12 @@ export function AvailabilityGrid({
         <span className="inline-flex items-center gap-1.5">
           <span className="size-3 rounded-sm bg-muted-foreground/40" /> Đã đặt
         </span>
+        {dayKind !== "future" && dayKind !== "none" && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-3 rounded-sm border border-dashed border-muted-foreground/40 bg-muted/40" />{" "}
+            Đã qua giờ
+          </span>
+        )}
       </div>
     </div>
   );

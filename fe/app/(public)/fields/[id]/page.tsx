@@ -534,6 +534,7 @@ export default function FieldDetailPage({
                       slots={availabilityQuery.data ?? []}
                       selectedSlots={selectedSlots}
                       onChange={setSelectedSlots}
+                      date={date}
                     />
                   </div>
                 )
