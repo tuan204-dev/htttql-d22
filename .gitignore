@@ -1,0 +1,44 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencies
+**/node_modules/
+
+# Build outputs
+**/dist/
+**/.next/
+**/out/
+**/build/
+
+# TypeScript
+*.tsbuildinfo
+
+# Uploads
+**/uploads/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.pem
+*.key
